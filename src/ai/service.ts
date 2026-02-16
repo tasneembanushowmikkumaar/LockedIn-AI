@@ -16,10 +16,10 @@ interface AIServiceConfig {
 export class AIService {
   private config: AIServiceConfig;
 
-  constructor(config: AIServiceConfig = { provider: 'groq' }) {
+  constructor(config: AIServiceConfig = { provider: 'google' }) {
     this.config = config;
 
-    // Force override from env var if present, otherwise default to groq
+    // Force override from env var if present, otherwise default to google
     const envProvider = process.env.AI_PROVIDER as AIProvider;
     if (envProvider) {
         this.config.provider = envProvider;
@@ -37,7 +37,9 @@ export class AIService {
   async generateChatResponse(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
     console.log(`[AIService] Generating Chat Response using provider: ${this.config.provider}`);
 
-    if (this.config.provider === 'groq') {
+    if (this.config.provider === 'google') {
+      return this.generateGoogleChat(messages, systemPrompt);
+    } else if (this.config.provider === 'groq') {
       return this.generateGroqChat(messages, systemPrompt);
     } else if (this.config.provider === 'openrouter') {
       return this.generateOpenRouterChat(messages, systemPrompt);
@@ -48,7 +50,9 @@ export class AIService {
   }
 
   async generateJson<T>(prompt: string, schemaDescription: string): Promise<T> {
-    if (this.config.provider === 'groq') {
+    if (this.config.provider === 'google') {
+        return this.generateGoogleJson<T>(prompt, schemaDescription);
+    } else if (this.config.provider === 'groq') {
         return this.generateGroqJson<T>(prompt, schemaDescription);
     } else if (this.config.provider === 'openrouter') {
       return this.generateOpenRouterJson<T>(prompt, schemaDescription);
@@ -59,9 +63,102 @@ export class AIService {
   }
 
   async generateVoice(text: string): Promise<ArrayBuffer | null> {
-    // Groq doesn't support voice natively yet.
-    // Return null to gracefully degrade (UI will hide audio controls).
+    // Google doesn't support simple TTS via this API endpoint yet.
     return null;
+  }
+
+  // --- Google Implementation ---
+
+  private async generateGoogleChat(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
+    const model = 'gemini-1.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`;
+
+    const contents = messages.map(m => ({
+      role: m.role === 'user' ? 'user' : 'model',
+      parts: [{ text: m.content }]
+    }));
+
+    if (systemPrompt) {
+      // Gemini uses 'system_instruction' or specific prompting. 1.5 Flash supports system instructions.
+      // However, for REST API, it's often safer to prepend to first message if unsure of SDK version matching.
+      // Let's use the proper system_instruction field for v1beta.
+    }
+
+    const body: any = {
+      contents: contents,
+      generationConfig: {
+        temperature: 0.7,
+        maxOutputTokens: 800,
+      }
+    };
+
+    if (systemPrompt) {
+      body.systemInstruction = {
+        parts: [{ text: systemPrompt }]
+      };
+    }
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error(`Google API Error: ${res.status} - ${error}`);
+      }
+
+      const data = await res.json();
+      return data.candidates?.[0]?.content?.parts?.[0]?.text || "";
+    } catch (error) {
+      console.error("Google Generation Failed:", error);
+      throw error;
+    }
+  }
+
+  private async generateGoogleJson<T>(prompt: string, schemaDescription: string): Promise<T> {
+    const model = 'gemini-1.5-flash';
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${this.config.apiKey}`;
+
+    const systemPrompt = `You are a helpful AI that outputs strict JSON.
+    The JSON structure should follow this description: ${schemaDescription}.
+    Do not output markdown code blocks, just the raw JSON string.`;
+
+    const body = {
+      contents: [{
+        role: 'user',
+        parts: [{ text: prompt }]
+      }],
+      systemInstruction: {
+        parts: [{ text: systemPrompt }]
+      },
+      generationConfig: {
+        temperature: 0.3,
+        responseMimeType: "application/json" // Force JSON mode
+      }
+    };
+
+    try {
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body)
+      });
+
+      if (!res.ok) {
+        const error = await res.text();
+        throw new Error(`Google API Error (JSON): ${res.status} - ${error}`);
+      }
+
+      const data = await res.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      return JSON.parse(text);
+    } catch (error) {
+      console.error("Google JSON Generation Failed:", error);
+      throw error;
+    }
   }
 
   // --- Hugging Face Implementation ---
