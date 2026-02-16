@@ -1,6 +1,6 @@
 // We will implement Groq directly here for now or in a separate file
 
-export type AIProvider = 'groq' | 'google' | 'openrouter';
+export type AIProvider = 'groq' | 'google' | 'openrouter' | 'huggingface';
 
 interface ChatMessage {
   role: 'user' | 'assistant' | 'system';
@@ -23,11 +23,14 @@ export class AIService {
       if (this.config.provider === 'groq') this.config.apiKey = process.env.GROQ_API_KEY;
       if (this.config.provider === 'google') this.config.apiKey = process.env.GOOGLE_GENAI_API_KEY;
       if (this.config.provider === 'openrouter') this.config.apiKey = process.env.OPENROUTER_API_KEY;
+      if (this.config.provider === 'huggingface') this.config.apiKey = process.env.HF_TOKEN;
     }
   }
 
   async generateChatResponse(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
-    if (this.config.provider === 'openrouter') {
+    if (this.config.provider === 'huggingface') {
+      return this.generateHuggingFaceChat(messages, systemPrompt);
+    } else if (this.config.provider === 'openrouter') {
       return this.generateOpenRouterChat(messages, systemPrompt);
     } else if (this.config.provider === 'groq') {
       return this.generateGroqChat(messages, systemPrompt);
@@ -38,12 +41,123 @@ export class AIService {
   }
 
   async generateJson<T>(prompt: string, schemaDescription: string): Promise<T> {
-    if (this.config.provider === 'openrouter') {
+    if (this.config.provider === 'huggingface') {
+        return this.generateHuggingFaceJson<T>(prompt, schemaDescription);
+    } else if (this.config.provider === 'openrouter') {
       return this.generateOpenRouterJson<T>(prompt, schemaDescription);
     } else if (this.config.provider === 'groq') {
         return this.generateGroqJson<T>(prompt, schemaDescription);
     }
     throw new Error(`Unsupported provider for JSON: ${this.config.provider}`);
+  }
+
+  async generateVoice(text: string): Promise<ArrayBuffer | null> {
+    if (this.config.provider === 'huggingface') {
+      return this.generateHuggingFaceVoice(text);
+    }
+    return null;
+  }
+
+  // --- Hugging Face Implementation ---
+
+  private async generateHuggingFaceChat(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
+    // Models
+    const primaryModel = "HuggingFaceH4/zephyr-7b-beta";
+    const fallbackModel = "microsoft/DialoGPT-large";
+
+    const allMessages = systemPrompt
+      ? [{ role: 'system', content: systemPrompt }, ...messages]
+      : messages;
+
+    // Convert OpenAI-style messages to a single prompt string for HF Inference if needed,
+    // but Zephyr supports chat templating via the messages API on HF Inference (usually).
+    // Let's try the modern messages API first.
+
+    try {
+        const output = await this.callHfInference(primaryModel, {
+            inputs: this.formatPromptForZephyr(allMessages),
+            parameters: { max_new_tokens: 500, temperature: 0.7, return_full_text: false }
+        });
+        return output[0]?.generated_text || "";
+    } catch (e) {
+        console.warn(`Zephyr failed, falling back to ${fallbackModel}`, e);
+        // Fallback to DialoGPT (simpler chat model)
+        const lastUserMessage = messages[messages.length - 1].content;
+        try {
+            const output = await this.callHfInference(fallbackModel, {
+                inputs: lastUserMessage,
+                parameters: { max_new_tokens: 100, return_full_text: false }
+            });
+            return output[0]?.generated_text || "";
+        } catch (e2) {
+            console.error("All HF models failed", e2);
+            throw e2;
+        }
+    }
+  }
+
+  private async generateHuggingFaceJson<T>(prompt: string, schemaDescription: string): Promise<T> {
+    const model = "HuggingFaceH4/zephyr-7b-beta"; // DialoGPT is too weak for JSON
+    const systemPrompt = `You are a helpful AI that outputs strict JSON.
+    The JSON structure should follow this description: ${schemaDescription}.
+    Do not output markdown code blocks, just the raw JSON string.`;
+
+    const fullPrompt = `<|system|>\n${systemPrompt}</s>\n<|user|>\n${prompt}</s>\n<|assistant|>\n`;
+
+    try {
+        const output = await this.callHfInference(model, {
+            inputs: fullPrompt,
+            parameters: { max_new_tokens: 1000, temperature: 0.3, return_full_text: false }
+        });
+
+        let content = output[0]?.generated_text || "{}";
+        content = content.replace(/```json\n?|\n?```/g, "").trim();
+        return JSON.parse(content);
+    } catch (e) {
+        console.error("HF JSON failed", e);
+        throw e;
+    }
+  }
+
+  private async generateHuggingFaceVoice(text: string): Promise<ArrayBuffer> {
+    const model = "microsoft/speecht5_tts";
+    const res = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${this.config.apiKey}`,
+            "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ inputs: text })
+    });
+
+    if (!res.ok) throw new Error(`TTS Failed: ${res.status}`);
+    return await res.arrayBuffer();
+  }
+
+  private async callHfInference(model: string, body: any) {
+      const res = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+          method: "POST",
+          headers: {
+              "Authorization": `Bearer ${this.config.apiKey}`,
+              "Content-Type": "application/json",
+          },
+          body: JSON.stringify(body)
+      });
+      if (!res.ok) {
+          const err = await res.text();
+          throw new Error(`HF API Error (${model}): ${res.status} - ${err}`);
+      }
+      return await res.json();
+  }
+
+  private formatPromptForZephyr(messages: any[]) {
+      // Manual formatting if the API doesn't support 'messages' directly for this model
+      return messages.map(m => {
+          if (m.role === 'system') return `<|system|>\n${m.content}</s>\n`;
+          if (m.role === 'user') return `<|user|>\n${m.content}</s>\n`;
+          if (m.role === 'assistant') return `<|assistant|>\n${m.content}</s>\n`;
+          return "";
+      }).join("") + "<|assistant|>\n";
   }
 
   // --- OpenRouter Implementation ---

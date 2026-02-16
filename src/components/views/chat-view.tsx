@@ -2,10 +2,11 @@
 
 import { useState, useRef, useEffect } from "react";
 import { aiChatInteraction } from "@/ai/flows/ai-chat-interaction-flow";
+import { generateSpeech } from "@/ai/actions/voice";
 import { AppState, Message } from "@/lib/store";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Send, User, Bot, Loader2 } from "lucide-react";
+import { Send, User, Bot, Loader2, Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
@@ -17,6 +18,9 @@ interface ChatViewProps {
 export function ChatView({ state, addChatMessage }: ChatViewProps) {
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
+  const [audioUrl, setAudioUrl] = useState<string | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -61,6 +65,21 @@ export function ChatView({ state, addChatMessage }: ChatViewProps) {
         content: response.aiResponse,
         timestamp: Date.now(),
       });
+
+      // Generate Audio
+      try {
+        const audioData = await generateSpeech(response.aiResponse);
+        if (audioData) {
+          if (audioRef.current) {
+            audioRef.current.src = audioData;
+            audioRef.current.play();
+            setIsPlaying(true);
+          }
+        }
+      } catch (voiceError) {
+        console.error("Audio playback failed", voiceError);
+      }
+
     } catch (e) {
       addChatMessage({
         role: 'assistant',
@@ -74,6 +93,24 @@ export function ChatView({ state, addChatMessage }: ChatViewProps) {
 
   return (
     <div className="flex flex-col h-[calc(100vh-12rem)] max-h-[800px] animate-in fade-in duration-500">
+      {/* Hidden Audio Player */}
+      <audio
+        ref={audioRef}
+        onEnded={() => setIsPlaying(false)}
+        onPause={() => setIsPlaying(false)}
+        className="hidden"
+      />
+
+      <div className="flex justify-between items-center mb-2 px-2">
+        <span className="text-xs font-bold uppercase tracking-widest text-muted-foreground">Secure Channel</span>
+        {isPlaying && (
+          <div className="flex items-center gap-2 text-primary animate-pulse">
+            <Volume2 className="w-4 h-4" />
+            <span className="text-xs font-bold">Voice Active</span>
+          </div>
+        )}
+      </div>
+
       <div className="flex-1 overflow-hidden neumorphic-inset rounded-3xl mb-4 relative">
         <ScrollArea className="h-full p-4" ref={scrollRef}>
           <div className="space-y-6 pb-4">
