@@ -48,39 +48,62 @@ export class AIService {
 
   // --- OpenRouter Implementation ---
 
+  // List of models to try in order. If one fails (rate limit/offline), try next.
+  private OPENROUTER_MODELS = [
+    'nousresearch/hermes-3-llama-3.1-405b:free',  // Primary: Best Quality
+    'meta-llama/llama-3.3-70b-instruct:free',     // Fallback 1: Strong & Fast
+    'google/gemini-2.0-flash-exp:free',           // Fallback 2: Very Fast
+    'meta-llama/llama-3.2-3b-instruct:free'       // Fallback 3: Lightweight
+  ];
+
   private async generateOpenRouterChat(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
     const allMessages = systemPrompt
       ? [{ role: 'system', content: systemPrompt }, ...messages]
       : messages;
 
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'HTTP-Referer': 'https://lockedin.ai', // Required by OpenRouter
-          'X-Title': 'LockedIn AI',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: this.config.model || 'nousresearch/hermes-3-llama-3.1-405b:free', // Validated available free model
-          messages: allMessages,
-          temperature: 0.8, // Slightly higher for creativity/persona
-          top_p: 0.9,
-        })
-      });
+    let lastError: any;
 
-      if (!res.ok) {
-        const error = await res.text();
-        throw new Error(`OpenRouter API Error: ${res.status} - ${error}`);
+    for (const model of this.OPENROUTER_MODELS) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'HTTP-Referer': 'https://lockedin.ai',
+            'X-Title': 'LockedIn AI',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: allMessages,
+            temperature: 0.8,
+            top_p: 0.9,
+          })
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          // If rate limited (429) or server error (5xx), continue to next model
+          if (res.status === 429 || res.status >= 500) {
+            console.warn(`OpenRouter Model ${model} failed (${res.status}). Switching...`);
+            lastError = new Error(`OpenRouter API Error: ${res.status} - ${errorText}`);
+            continue;
+          }
+          throw new Error(`OpenRouter API Error: ${res.status} - ${errorText}`);
+        }
+
+        const data = await res.json();
+        console.log(`AI Success using model: ${model}`);
+        return data.choices[0]?.message?.content || "";
+
+      } catch (error) {
+        console.warn(`OpenRouter Model ${model} error:`, error);
+        lastError = error;
       }
-
-      const data = await res.json();
-      return data.choices[0]?.message?.content || "";
-    } catch (error) {
-      console.error("OpenRouter Generation Failed:", error);
-      throw error;
     }
+
+    console.error("All OpenRouter models failed.");
+    throw lastError;
   }
 
   private async generateOpenRouterJson<T>(prompt: string, schemaDescription: string): Promise<T> {
@@ -88,42 +111,56 @@ export class AIService {
     The JSON structure should follow this description: ${schemaDescription}.
     Do not output markdown code blocks, just the raw JSON string.`;
 
-    try {
-      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'HTTP-Referer': 'https://lockedin.ai',
-          'X-Title': 'LockedIn AI',
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: this.config.model || 'nousresearch/hermes-3-llama-3.1-405b:free',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          response_format: { type: "json_object" }, // Supported by some OpenRouter models
-          temperature: 0.3
-        })
-      });
+    let lastError: any;
 
-      if (!res.ok) {
-        const error = await res.text();
-        throw new Error(`OpenRouter API Error (JSON): ${res.status} - ${error}`);
+    for (const model of this.OPENROUTER_MODELS) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'HTTP-Referer': 'https://lockedin.ai',
+            'X-Title': 'LockedIn AI',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: prompt }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.3
+          })
+        });
+
+        if (!res.ok) {
+          const errorText = await res.text();
+          if (res.status === 429 || res.status >= 500) {
+             console.warn(`OpenRouter JSON Model ${model} failed (${res.status}). Switching...`);
+             lastError = new Error(`OpenRouter API Error (JSON): ${res.status} - ${errorText}`);
+             continue;
+          }
+          throw new Error(`OpenRouter API Error (JSON): ${res.status} - ${errorText}`);
+        }
+
+        const data = await res.json();
+        let content = data.choices[0]?.message?.content;
+
+        // Cleanup markdown if present
+        content = content.replace(/```json\n?|\n?```/g, "").trim();
+
+        console.log(`AI JSON Success using model: ${model}`);
+        return JSON.parse(content);
+
+      } catch (error) {
+        console.warn(`OpenRouter JSON Model ${model} error:`, error);
+        lastError = error;
       }
-
-      const data = await res.json();
-      let content = data.choices[0]?.message?.content;
-
-      // Cleanup markdown if present (common issue with some models)
-      content = content.replace(/```json\n?|\n?```/g, "").trim();
-
-      return JSON.parse(content);
-    } catch (error) {
-      console.error("OpenRouter JSON Generation Failed:", error);
-      throw error;
     }
+
+    console.error("All OpenRouter JSON models failed.");
+    throw lastError;
   }
 
   // --- Groq Implementation ---
