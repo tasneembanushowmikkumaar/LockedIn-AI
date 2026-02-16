@@ -121,7 +121,8 @@ export class AIService {
 
   private async generateHuggingFaceVoice(text: string): Promise<ArrayBuffer> {
     const model = "microsoft/speecht5_tts";
-    const res = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+    // Updated endpoint per HF 410 error
+    const res = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
         method: "POST",
         headers: {
             "Authorization": `Bearer ${this.config.apiKey}`,
@@ -135,7 +136,8 @@ export class AIService {
   }
 
   private async callHfInference(model: string, body: any) {
-      const res = await fetch(`https://api-inference.huggingface.co/models/${model}`, {
+      // Updated endpoint per HF 410 error
+      const res = await fetch(`https://router.huggingface.co/hf-inference/models/${model}`, {
           method: "POST",
           headers: {
               "Authorization": `Bearer ${this.config.apiKey}`,
