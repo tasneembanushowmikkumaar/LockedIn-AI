@@ -16,7 +16,7 @@ interface AIServiceConfig {
 export class AIService {
   private config: AIServiceConfig;
 
-  constructor(config: AIServiceConfig = { provider: 'openrouter' }) {
+  constructor(config: AIServiceConfig = { provider: 'groq' }) {
     this.config = config;
     // Default to environment variable if apiKey not passed explicitly
     if (!this.config.apiKey) {
@@ -28,33 +28,30 @@ export class AIService {
   }
 
   async generateChatResponse(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
-    if (this.config.provider === 'huggingface') {
-      return this.generateHuggingFaceChat(messages, systemPrompt);
+    if (this.config.provider === 'groq') {
+      return this.generateGroqChat(messages, systemPrompt);
     } else if (this.config.provider === 'openrouter') {
       return this.generateOpenRouterChat(messages, systemPrompt);
-    } else if (this.config.provider === 'groq') {
-      return this.generateGroqChat(messages, systemPrompt);
-    } else if (this.config.provider === 'google') {
-      return "[Google Provider Not Fully Ported Yet]";
+    } else if (this.config.provider === 'huggingface') {
+      return this.generateHuggingFaceChat(messages, systemPrompt);
     }
     throw new Error(`Unsupported provider: ${this.config.provider}`);
   }
 
   async generateJson<T>(prompt: string, schemaDescription: string): Promise<T> {
-    if (this.config.provider === 'huggingface') {
-        return this.generateHuggingFaceJson<T>(prompt, schemaDescription);
+    if (this.config.provider === 'groq') {
+        return this.generateGroqJson<T>(prompt, schemaDescription);
     } else if (this.config.provider === 'openrouter') {
       return this.generateOpenRouterJson<T>(prompt, schemaDescription);
-    } else if (this.config.provider === 'groq') {
-        return this.generateGroqJson<T>(prompt, schemaDescription);
+    } else if (this.config.provider === 'huggingface') {
+        return this.generateHuggingFaceJson<T>(prompt, schemaDescription);
     }
     throw new Error(`Unsupported provider for JSON: ${this.config.provider}`);
   }
 
   async generateVoice(text: string): Promise<ArrayBuffer | null> {
-    if (this.config.provider === 'huggingface') {
-      return this.generateHuggingFaceVoice(text);
-    }
+    // Groq doesn't support voice natively yet.
+    // Return null to gracefully degrade (UI will hide audio controls).
     return null;
   }
 
@@ -286,72 +283,96 @@ export class AIService {
       ? [{ role: 'system', content: systemPrompt }, ...messages]
       : messages;
 
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: this.config.model || 'llama-3.1-70b-versatile',
-          messages: allMessages,
-          temperature: 0.7
-        })
-      });
+    // Use current valid models: llama-3.3-70b-versatile (Primary), llama-3.1-8b-instant (Fallback)
+    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
 
-      if (!res.ok) {
-        const error = await res.text();
-        throw new Error(`Groq API Error: ${res.status} - ${error}`);
+    let lastError: any;
+
+    for (const model of models) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: allMessages,
+            temperature: 0.7
+          })
+        });
+
+        if (!res.ok) {
+          const error = await res.text();
+          // If model decommissioned (400) or rate limited (429), try next
+          if (res.status === 400 || res.status === 429) {
+             console.warn(`Groq Model ${model} failed (${res.status}). Switching...`);
+             lastError = new Error(`Groq API Error: ${res.status} - ${error}`);
+             continue;
+          }
+          throw new Error(`Groq API Error: ${res.status} - ${error}`);
+        }
+
+        const data = await res.json();
+        console.log(`Groq Success with ${model}`);
+        return data.choices[0]?.message?.content || "";
+      } catch (error) {
+        console.error(`Groq Generation Failed (${model}):`, error);
+        lastError = error;
       }
-
-      const data = await res.json();
-      return data.choices[0]?.message?.content || "";
-    } catch (error) {
-      console.error("Groq Generation Failed:", error);
-      throw error;
     }
+    throw lastError;
   }
 
   private async generateGroqJson<T>(prompt: string, schemaDescription: string): Promise<T> {
-    // Llama 3.1 is good at JSON if instructed. We can force JSON mode or just prompt engineer.
-    // Groq supports response_format: { type: "json_object" } for some models.
-
     const systemPrompt = `You are a helpful AI that outputs strict JSON.
     The JSON structure should follow this description: ${schemaDescription}.
     Do not output markdown code blocks, just the raw JSON string.`;
 
-    try {
-      const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${this.config.apiKey}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          model: this.config.model || 'llama-3.1-70b-versatile',
-          messages: [
-            { role: 'system', content: systemPrompt },
-            { role: 'user', content: prompt }
-          ],
-          response_format: { type: "json_object" },
-          temperature: 0.3
-        })
-      });
+    // JSON mode is supported well on these
+    const models = ['llama-3.3-70b-versatile', 'llama-3.1-8b-instant'];
+    let lastError: any;
 
-      if (!res.ok) {
-        const error = await res.text();
-        throw new Error(`Groq API Error (JSON): ${res.status} - ${error}`);
+    for (const model of models) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${this.config.apiKey}`,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            model: model,
+            messages: [
+              { role: 'system', content: systemPrompt },
+              { role: 'user', content: prompt }
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.3
+          })
+        });
+
+        if (!res.ok) {
+          const error = await res.text();
+          if (res.status === 400 || res.status === 429) {
+             console.warn(`Groq JSON Model ${model} failed (${res.status}). Switching...`);
+             lastError = new Error(`Groq API Error (JSON): ${res.status} - ${error}`);
+             continue;
+          }
+          throw new Error(`Groq API Error (JSON): ${res.status} - ${error}`);
+        }
+
+        const data = await res.json();
+        const content = data.choices[0]?.message?.content;
+        console.log(`Groq JSON Success with ${model}`);
+        return JSON.parse(content);
+      } catch (error) {
+        console.error(`Groq JSON Generation Failed (${model}):`, error);
+        lastError = error;
       }
-
-      const data = await res.json();
-      const content = data.choices[0]?.message?.content;
-
-      return JSON.parse(content);
-    } catch (error) {
-      console.error("Groq JSON Generation Failed:", error);
-      throw error;
     }
+    throw lastError;
   }
 }
 
