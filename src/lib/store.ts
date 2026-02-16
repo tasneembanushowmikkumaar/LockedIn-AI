@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { GenerateTasksOutput } from "@/ai/flows/ai-generated-tasks";
 
-export type Tier = "Hardcore" | "Moderate" | "Light";
+export type Tier = "Newbie" | "Slave" | "Hardcore" | "Extreme" | "Destruction";
 export type Task = GenerateTasksOutput[0];
 
 export interface Message {

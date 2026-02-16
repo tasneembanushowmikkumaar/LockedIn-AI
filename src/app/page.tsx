@@ -1,81 +1,55 @@
-"use client";
+import Link from "next/link"
+import { Logo } from "@/components/logo"
+import { Button } from "@/components/ui/button"
 
-import { useState, useEffect } from "react";
-import { useLockedInStore } from "@/lib/store";
-import { BottomNav } from "@/components/bottom-nav";
-import { TimerCard } from "@/components/timer-card";
-import { StatGrid } from "@/components/stat-grid";
-import { HomeView } from "@/components/views/home-view";
-import { TasksView } from "@/components/views/tasks-view";
-import { ChatView } from "@/components/views/chat-view";
-import { CalendarView } from "@/components/views/calendar-view";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ShieldCheck } from "lucide-react";
-
-export default function LockedInDashboard() {
-  const { state, isLoaded, updateState, completeTask, failTask, addChatMessage } = useLockedInStore();
-  const [activeTab, setActiveTab] = useState("home");
-
-  if (!isLoaded) return null;
-
+export default function LandingPage() {
   return (
-    <div className="min-h-screen bg-background pb-24 text-foreground selection:bg-primary/30">
-      {/* Top Bar */}
-      <header className="px-6 pt-6 pb-2 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl neumorphic-flat">
-            <ShieldCheck className="w-5 h-5 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-xl font-headline font-black tracking-tight leading-none">LockedIn AI</h1>
-            <p className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground">Version 2.4.0</p>
-          </div>
-        </div>
+    <div className="min-h-screen bg-background flex flex-col items-center justify-center p-6 text-foreground relative overflow-hidden">
+      {/* Background Elements */}
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_center,_var(--tw-gradient-stops))] from-primary/10 via-background to-background" />
+
+      <div className="relative z-10 flex flex-col items-center space-y-12 max-w-md w-full animate-in fade-in zoom-in duration-1000">
         
-        <div className="flex items-center gap-4">
-          <div className="hidden xs:flex flex-col items-end">
-            <span className="text-[10px] font-bold uppercase text-accent tracking-tighter">Subject #1921</span>
-            <span className="text-xs font-bold">{state.tier}</span>
+        {/* Branding */}
+        <div className="flex flex-col items-center space-y-4">
+          <div className="p-6 rounded-full bg-card/50 backdrop-blur-sm border border-border shadow-2xl neumorphic-flat animate-pulse-red">
+            <Logo className="w-24 h-24 text-primary" />
           </div>
-          <Avatar className="h-10 w-10 border-2 border-border neumorphic-flat">
-            <AvatarImage src="https://picsum.photos/seed/user/100/100" />
-            <AvatarFallback>SUB</AvatarFallback>
-          </Avatar>
+          <h1 className="text-5xl font-black tracking-tighter text-transparent bg-clip-text bg-gradient-to-br from-primary via-accent to-secondary-foreground font-headline drop-shadow-lg">
+            LockedIn
+          </h1>
+          <p className="text-xl text-muted-foreground font-medium tracking-wide">
+            Stay LockedIn.
+          </p>
         </div>
-      </header>
 
-      {/* Main Content Areas */}
-      <main className="px-6 py-4 max-w-lg mx-auto space-y-8">
-        {activeTab === 'home' && (
-          <HomeView 
-            state={state} 
-            completeTask={completeTask} 
-            failTask={failTask} 
-          />
-        )}
-        {activeTab === 'tasks' && (
-          <TasksView 
-            state={state} 
-            completeTask={completeTask} 
-            failTask={failTask}
-            updateState={updateState}
-          />
-        )}
-        {activeTab === 'chat' && (
-          <ChatView 
-            state={state} 
-            addChatMessage={addChatMessage} 
-          />
-        )}
-        {activeTab === 'calendar' && (
-          <CalendarView 
-            state={state} 
-          />
-        )}
-      </main>
+        {/* Actions */}
+        <div className="w-full space-y-4 pt-8">
+          <Link href="/login" className="w-full block">
+            <Button
+              size="lg"
+              className="w-full h-14 text-lg font-bold tracking-wide uppercase bg-primary hover:bg-primary/90 shadow-lg transition-all duration-300 transform hover:scale-[1.02]"
+            >
+              Lock In
+            </Button>
+          </Link>
 
-      {/* Persistent Navigation */}
-      <BottomNav activeTab={activeTab} onTabChange={setActiveTab} />
+          <Link href="/signup" className="w-full block">
+            <Button
+              variant="outline"
+              size="lg"
+              className="w-full h-14 text-lg font-bold tracking-wide uppercase border-2 hover:bg-secondary/50 transition-all duration-300 transform hover:scale-[1.02]"
+            >
+              Submit Yourself
+            </Button>
+          </Link>
+        </div>
+
+        {/* Footer */}
+        <div className="pt-12 text-center text-xs text-muted-foreground/50">
+          <p>By entering, you confirm you are 18+ and consent to the terms.</p>
+        </div>
+      </div>
     </div>
-  );
+  )
 }

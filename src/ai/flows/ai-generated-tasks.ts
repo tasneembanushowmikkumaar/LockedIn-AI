@@ -12,7 +12,7 @@ import {z} from 'genkit';
 import { v4 as uuidv4 } from 'uuid';
 
 const GenerateTasksInputSchema = z.object({
-  tier: z.enum(['Hardcore', 'Moderate', 'Light']).describe('The current chastity control tier.'),
+  tier: z.enum(['Newbie', 'Slave', 'Hardcore', 'Extreme', 'Destruction']).describe('The current chastity control tier.'),
   punishmentMode: z.boolean().describe('Whether punishment mode is currently active.'),
   timeOfDay: z.enum(['morning', 'afternoon', 'evening', 'night']).describe('The current time of day.'),
 });
@@ -53,9 +53,11 @@ Here is the current context for task generation:
 
 **Task Generation Rules:**
 1.  **Tier Influence**:
+    - If the tier is 'Newbie', tasks should be focused on discipline and mild denial.
+    - If the tier is 'Slave', tasks should be challenging but less extreme, moderate pain.
     - If the tier is 'Hardcore', tasks should be intense, highly restrictive, and often involve elements of JOI/CEI, CBT (Chastity/Bondage/Torment), and Denial.
-    - If the tier is 'Moderate', tasks should be challenging but less extreme.
-    - If the tier is 'Light', tasks should be focused on discipline and mild denial.
+    - If the tier is 'Extreme', tasks should involve brutal psychological and physical torture, life-impacting tasks.
+    - If the tier is 'Destruction', tasks should be merciless, designed to destroy ego and autonomy.
 2.  **Punishment Mode**:
     - If 'Punishment Mode Active' is true, ALL tasks must be significantly harsher, more demanding, and clearly reflect a punitive nature. The descriptions should emphasize the penalty.
 3.  **Time of Day**:
