@@ -18,6 +18,13 @@ export class AIService {
 
   constructor(config: AIServiceConfig = { provider: 'groq' }) {
     this.config = config;
+
+    // Force override from env var if present, otherwise default to groq
+    const envProvider = process.env.AI_PROVIDER as AIProvider;
+    if (envProvider) {
+        this.config.provider = envProvider;
+    }
+
     // Default to environment variable if apiKey not passed explicitly
     if (!this.config.apiKey) {
       if (this.config.provider === 'groq') this.config.apiKey = process.env.GROQ_API_KEY;
@@ -28,6 +35,8 @@ export class AIService {
   }
 
   async generateChatResponse(messages: ChatMessage[], systemPrompt?: string): Promise<string> {
+    console.log(`[AIService] Generating Chat Response using provider: ${this.config.provider}`);
+
     if (this.config.provider === 'groq') {
       return this.generateGroqChat(messages, systemPrompt);
     } else if (this.config.provider === 'openrouter') {
