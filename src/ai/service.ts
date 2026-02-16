@@ -63,7 +63,7 @@ export class AIService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: this.config.model || 'nousresearch/hermes-3-llama-3.1-8b', // Uncensored preferred
+          model: this.config.model || 'nousresearch/hermes-3-llama-3.1-405b:free', // Validated available free model
           messages: allMessages,
           temperature: 0.8, // Slightly higher for creativity/persona
           top_p: 0.9,
@@ -98,7 +98,7 @@ export class AIService {
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          model: this.config.model || 'nousresearch/hermes-3-llama-3.1-8b',
+          model: this.config.model || 'nousresearch/hermes-3-llama-3.1-405b:free',
           messages: [
             { role: 'system', content: systemPrompt },
             { role: 'user', content: prompt }
