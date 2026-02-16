@@ -32,10 +32,12 @@ export default function ReviewStep() {
       return
     }
 
-    // 2. Update Profile
+    // 2. Upsert Profile (to ensure it exists)
     const { error: profileError } = await supabase
       .from('profiles')
-      .update({
+      .upsert({
+        id: user.id,
+        email: user.email!,
         tier: data.tier,
         ai_personality: data.ai_personality,
         hard_limits: data.hard_limits,
@@ -54,7 +56,8 @@ export default function ReviewStep() {
         onboarding_completed: true,
         updated_at: new Date().toISOString()
       })
-      .eq('id', user.id)
+      .select()
+      .single()
 
     if (profileError) {
       console.error("Profile update failed:", profileError)
