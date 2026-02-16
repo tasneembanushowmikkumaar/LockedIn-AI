@@ -1,11 +1,4 @@
 'use server';
-/**
- * @fileOverview A Genkit flow for simulating real-time AI chat interactions.
- *
- * - aiChatInteraction - A function that handles the AI chat interaction process.
- * - AIChatInteractionInput - The input type for the aiChatInteraction function.
- * - AIChatInteractionOutput - The return type for the aiChatInteraction function.
- */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
@@ -28,10 +21,6 @@ const AIChatInteractionOutputSchema = z.object({
   aiResponse: z.string().describe('The AI\'s dynamic response.'),
 });
 export type AIChatInteractionOutput = z.infer<typeof AIChatInteractionOutputSchema>;
-
-export async function aiChatInteraction(input: AIChatInteractionInput): Promise<AIChatInteractionOutput> {
-  return aiChatInteractionFlow(input);
-}
 
 const aiChatInteractionPrompt = ai.definePrompt({
   name: 'aiChatInteractionPrompt',
@@ -81,7 +70,20 @@ const aiChatInteractionFlow = ai.defineFlow(
     outputSchema: AIChatInteractionOutputSchema,
   },
   async (input) => {
-    const {output} = await aiChatInteractionPrompt(input);
-    return output!;
+    try {
+      const {output} = await aiChatInteractionPrompt(input);
+      if (!output) throw new Error("No response generated");
+      return output;
+    } catch (error) {
+      console.error("AI Chat Generation Failed:", error);
+      // Fallback response if AI fails (e.g. missing API key or offline)
+      return {
+        aiResponse: `[System Error: AI Connection Failed. Ensure API Key is configured. Error: ${error instanceof Error ? error.message : String(error)}]`
+      };
+    }
   }
 );
+
+export async function aiChatInteraction(input: AIChatInteractionInput): Promise<AIChatInteractionOutput> {
+  return aiChatInteractionFlow(input);
+}
