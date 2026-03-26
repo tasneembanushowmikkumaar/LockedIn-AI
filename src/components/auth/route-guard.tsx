@@ -2,45 +2,32 @@
 
 import { useEffect, useState } from "react"
 import { useRouter, usePathname } from "next/navigation"
-import { createClient } from "@/lib/supabase/client"
+import { useConvexAuth, useQuery } from "convex/react"
+import { api } from "../../../convex/_generated/api"
 import { Loader2 } from "lucide-react"
 
 export function RouteGuard({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const supabase = createClient()
-  const [loading, setLoading] = useState(true)
-  const [authorized, setAuthorized] = useState(false)
+  const { isAuthenticated, isLoading: isAuthLoading } = useConvexAuth()
+  const profile = useQuery(api.users.current)
+  const isProfileLoading = profile === undefined
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { user }, error } = await supabase.auth.getUser()
+    if (isAuthLoading || isProfileLoading) return
 
-      if (error || !user) {
-        // Not logged in
-        router.push("/login")
-        return
-      }
-
-      // Check profile for onboarding status
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('onboarding_completed')
-        .eq('id', user.id)
-        .single()
-
-      if (!profile?.onboarding_completed) {
-        // Not onboarded
-        router.push("/onboarding")
-        return
-      }
-
-      setAuthorized(true)
-      setLoading(false)
+    if (!isAuthenticated) {
+      router.push("/login")
+      return
     }
 
-    checkAuth()
-  }, [router, pathname, supabase])
+    if (profile && !profile.onboarding_completed && pathname !== "/onboarding") {
+      router.push("/onboarding")
+      return
+    }
+  }, [router, pathname, isAuthenticated, isAuthLoading, profile, isProfileLoading])
+
+  const loading = isAuthLoading || isProfileLoading
 
   if (loading) {
     return (
@@ -50,5 +37,5 @@ export function RouteGuard({ children }: { children: React.ReactNode }) {
     )
   }
 
-  return <>{authorized && children}</>
+  return <>{isAuthenticated && children}</>
 }

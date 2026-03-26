@@ -22,8 +22,8 @@ export function TaskCard({ task, onComplete, onFail }: TaskCardProps) {
     }
   };
 
-  const isCompleted = task.status === 'Completed';
-  const isFailed = task.status === 'Failed';
+  const isCompleted = (task.status as string) === 'Completed' || (task.status as string) === 'completed';
+  const isFailed = (task.status as string) === 'Failed' || (task.status as string) === 'failed';
 
   return (
     <div className={cn(

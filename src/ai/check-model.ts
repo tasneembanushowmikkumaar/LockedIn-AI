@@ -1,3 +1,4 @@
+export {}
 const apiKey = process.env.OPENROUTER_API_KEY;
 
 async function checkModels() {

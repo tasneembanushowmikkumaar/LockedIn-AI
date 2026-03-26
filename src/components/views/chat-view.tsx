@@ -52,7 +52,7 @@ export function ChatView({ state, addChatMessage }: ChatViewProps) {
         tier: state.tier,
         complianceScore: state.willpower,
         streak: state.streak,
-        recentFailures: state.tasks.filter(t => t.status === 'Failed').map(t => t.description).join(", ") || "None",
+        recentFailures: state.tasks.filter(t => (t.status as string) === 'Failed' || (t.status as string) === 'failed').map(t => t.description).join(", ") || "None",
         timeLeft: `${Math.floor((state.timerEnd - Date.now()) / (1000 * 60 * 60))}h left`,
         chatHistory: state.chatMessages.slice(-10).map(m => ({
           role: m.role,

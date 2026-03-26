@@ -2,7 +2,9 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { createClient } from "@/lib/supabase/client";
+import { useUser } from "@clerk/nextjs";
+import { useQuery } from "convex/react";
+import { api } from "../../../convex/_generated/api";
 import { useLockedInStore, Tier } from "@/lib/store";
 import { BottomNav } from "@/components/bottom-nav";
 import { HomeView } from "@/components/views/home-view";
@@ -16,52 +18,39 @@ export default function LockedInDashboard() {
   const { state, isLoaded, updateState, completeTask, failTask, addChatMessage } = useLockedInStore();
   const [activeTab, setActiveTab] = useState("home");
 
-  // Auth Check
-  const [authorized, setAuthorized] = useState(false);
+  // Auth Check via Clerk
+  const { isSignedIn, isLoaded: clerkLoaded, user: clerkUser } = useUser();
   const router = useRouter();
-  const supabase = createClient();
+
+  // Fetch user profile from Convex
+  const convexUser = useQuery(api.users.current);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+    if (!clerkLoaded) return;
 
-      // Check onboarding
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', user.id)
-        .single();
+    if (!isSignedIn) {
+      router.push("/login");
+      return;
+    }
 
-      if (!profile?.onboarding_completed) {
+    // Check onboarding via Convex user profile
+    if (convexUser !== undefined && convexUser !== null) {
+      if (!convexUser.onboarding_completed) {
         router.push("/onboarding");
         return;
       }
 
-      // Sync Supabase profile to local store
-      if (profile && profile.tier) {
-        // Fetch active session for timer
-        const { data: session } = await supabase
-          .from('sessions')
-          .select('*')
-          .eq('user_id', user.id)
-          .eq('status', 'active')
-          .single();
-
+      // Sync Convex profile to local store
+      if (convexUser.tier) {
         updateState((prev) => ({
           ...prev,
-          tier: profile.tier as Tier,
-          timerEnd: session ? new Date(session.scheduled_end_time).getTime() : prev.timerEnd,
+          tier: convexUser.tier as Tier,
         }));
       }
+    }
+  }, [clerkLoaded, isSignedIn, convexUser, router, updateState]);
 
-      setAuthorized(true);
-    };
-    checkAuth();
-  }, [router, supabase]);
+  const authorized = clerkLoaded && isSignedIn && convexUser !== undefined;
 
   if (!isLoaded || !authorized) {
     return (
@@ -91,7 +80,7 @@ export default function LockedInDashboard() {
             <span className="text-xs font-bold">{state.tier}</span>
           </div>
           <Avatar className="h-10 w-10 border-2 border-border neumorphic-flat">
-            <AvatarImage src="https://picsum.photos/seed/user/100/100" />
+            <AvatarImage src={clerkUser?.imageUrl || "https://picsum.photos/seed/user/100/100"} />
             <AvatarFallback>SUB</AvatarFallback>
           </Avatar>
         </div>
